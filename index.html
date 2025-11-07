@@ -1,0 +1,649 @@
+import React, { useState, useEffect } from 'react';
+
+const RetroForum = () => {
+  const [messages, setMessages] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [view, setView] = useState('login'); // 'login', 'register', 'forum'
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [replyTo, setReplyTo] = useState(null);
+  
+  // Auth form states
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+
+  // Your Render API endpoint - REPLACE THIS with your actual Render URL
+  const API_URL = 'https://your-forum-api.onrender.com';
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('forumUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+      setView('forum');
+      loadMessages();
+    }
+  }, []);
+
+  const loadMessages = async () => {
+    try {
+      const response = await fetch(`${API_URL}/messages`);
+      const data = await response.json();
+      setMessages(data.messages || []);
+    } catch (err) {
+      setError('Failed to load messages. Make sure your API is running!');
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!authUsername || !authPassword || !authEmail) {
+      setError('All fields are required!');
+      return;
+    }
+
+    if (authPassword.length < 6) {
+      setError('Password must be at least 6 characters!');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: authUsername.trim(),
+          password: authPassword,
+          email: authEmail.trim(),
+          joinDate: new Date().toISOString()
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setError('');
+        alert('Registration successful! Please login.');
+        setView('login');
+        setAuthUsername('');
+        setAuthPassword('');
+        setAuthEmail('');
+      } else {
+        setError(data.error || 'Registration failed');
+      }
+    } catch (err) {
+      setError('Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!authUsername || !authPassword) {
+      setError('Username and password are required!');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: authUsername.trim(),
+          password: authPassword
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        const user = { username: data.username, email: data.email };
+        setCurrentUser(user);
+        localStorage.setItem('forumUser', JSON.stringify(user));
+        setView('forum');
+        setAuthUsername('');
+        setAuthPassword('');
+        await loadMessages();
+      } else {
+        setError(data.error || 'Login failed');
+      }
+    } catch (err) {
+      setError('Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('forumUser');
+    setView('login');
+  };
+
+  const handleSubmit = async () => {
+    if (!message) {
+      setError('Message is required!');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const newMessage = {
+      id: Date.now(),
+      username: currentUser.username,
+      title: replyTo ? `Re: ${replyTo.title}` : title.trim() || 'No Subject',
+      message: message.trim(),
+      timestamp: new Date().toISOString(),
+      replyTo: replyTo ? replyTo.id : null
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMessage)
+      });
+
+      if (response.ok) {
+        setTitle('');
+        setMessage('');
+        setReplyTo(null);
+        await loadMessages();
+      } else {
+        setError('Failed to post message');
+      }
+    } catch (err) {
+      setError('Error posting message: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getThreadMessages = () => {
+    const threads = messages.filter(m => !m.replyTo);
+    return threads.map(thread => ({
+      ...thread,
+      replies: messages.filter(m => m.replyTo === thread.id)
+    }));
+  };
+
+  // Login/Register View
+  if (view === 'login' || view === 'register') {
+    return (
+      <div style={{
+        fontFamily: 'Verdana, Arial, sans-serif',
+        fontSize: '11px',
+        backgroundColor: '#E8E8E8',
+        minHeight: '100vh',
+        padding: '0',
+        margin: '0'
+      }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(to bottom, #4A90E2, #2E5C8A)',
+          padding: '15px',
+          borderBottom: '3px solid #1A3A5A',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+        }}>
+          <h1 style={{
+            margin: '0',
+            color: '#FFFFFF',
+            fontSize: '24px',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+            letterSpacing: '1px'
+          }}>
+            ★ AWESOME FORUM 2008 ★
+          </h1>
+          <div style={{
+            color: '#CCDDFF',
+            fontSize: '10px',
+            marginTop: '5px'
+          }}>
+            {view === 'login' ? 'Please login to continue' : 'Create your account'}
+          </div>
+        </div>
+
+        <div style={{ maxWidth: '500px', margin: '50px auto', padding: '0 15px' }}>
+          {error && (
+            <div style={{
+              backgroundColor: '#FFE6E6',
+              border: '2px solid #CC0000',
+              padding: '10px',
+              marginBottom: '15px',
+              borderRadius: '3px'
+            }}>
+              <strong style={{ color: '#CC0000' }}>Error:</strong> {error}
+            </div>
+          )}
+
+          <div style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #CCCCCC',
+            boxShadow: '2px 2px 5px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{
+              background: 'linear-gradient(to bottom, #F0F0F0, #D8D8D8)',
+              padding: '8px 12px',
+              borderBottom: '1px solid #999',
+              fontWeight: 'bold',
+              color: '#333'
+            }}>
+              {view === 'login' ? '🔐 Member Login' : '📝 Register New Account'}
+            </div>
+            
+            <div style={{ padding: '20px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '8px', fontWeight: 'bold', width: '120px' }}>Username:</td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="text"
+                        value={authUsername}
+                        onChange={(e) => setAuthUsername(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '5px',
+                          border: '1px solid #999',
+                          fontSize: '11px'
+                        }}
+                        maxLength={20}
+                      />
+                    </td>
+                  </tr>
+                  {view === 'register' && (
+                    <tr>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>Email:</td>
+                      <td style={{ padding: '8px' }}>
+                        <input
+                          type="email"
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '5px',
+                            border: '1px solid #999',
+                            fontSize: '11px'
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td style={{ padding: '8px', fontWeight: 'bold' }}>Password:</td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="password"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            view === 'login' ? handleLogin() : handleRegister();
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '5px',
+                          border: '1px solid #999',
+                          fontSize: '11px'
+                        }}
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td></td>
+                    <td style={{ padding: '8px' }}>
+                      <button
+                        onClick={view === 'login' ? handleLogin : handleRegister}
+                        disabled={loading}
+                        style={{
+                          padding: '6px 25px',
+                          backgroundColor: '#4A90E2',
+                          color: 'white',
+                          border: '1px solid #2E5C8A',
+                          cursor: loading ? 'wait' : 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          marginRight: '10px'
+                        }}
+                      >
+                        {loading ? 'Please wait...' : (view === 'login' ? 'Login' : 'Register')}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div style={{
+                marginTop: '20px',
+                paddingTop: '15px',
+                borderTop: '1px solid #DDD',
+                textAlign: 'center'
+              }}>
+                {view === 'login' ? (
+                  <span>
+                    Don't have an account?{' '}
+                    <a
+                      onClick={() => {
+                        setView('register');
+                        setError('');
+                        setAuthUsername('');
+                        setAuthPassword('');
+                      }}
+                      style={{ color: '#0066CC', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      Register here
+                    </a>
+                  </span>
+                ) : (
+                  <span>
+                    Already have an account?{' '}
+                    <a
+                      onClick={() => {
+                        setView('login');
+                        setError('');
+                        setAuthUsername('');
+                        setAuthPassword('');
+                        setAuthEmail('');
+                      }}
+                      style={{ color: '#0066CC', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      Login here
+                    </a>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Forum View
+  return (
+    <div style={{
+      fontFamily: 'Verdana, Arial, sans-serif',
+      fontSize: '11px',
+      backgroundColor: '#E8E8E8',
+      minHeight: '100vh',
+      padding: '0',
+      margin: '0'
+    }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(to bottom, #4A90E2, #2E5C8A)',
+        padding: '15px',
+        borderBottom: '3px solid #1A3A5A',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+      }}>
+        <h1 style={{
+          margin: '0',
+          color: '#FFFFFF',
+          fontSize: '24px',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+          letterSpacing: '1px'
+        }}>
+          ★ AWESOME FORUM 2008 ★
+        </h1>
+        <div style={{
+          color: '#CCDDFF',
+          fontSize: '10px',
+          marginTop: '5px'
+        }}>
+          Welcome back, <strong>{currentUser?.username}</strong>! • Online Users: {Math.floor(Math.random() * 50) + 10}
+        </div>
+      </div>
+
+      {/* Navigation Bar */}
+      <div style={{
+        backgroundColor: '#D4D4D4',
+        padding: '8px 15px',
+        borderBottom: '1px solid #999',
+        boxShadow: 'inset 0 1px 0 #FFF',
+        display: 'flex',
+        justifyContent: 'space-between'
+      }}>
+        <div>
+          <span style={{ marginRight: '15px', color: '#0066CC', cursor: 'pointer' }}>Home</span>
+          <span style={{ marginRight: '15px', color: '#0066CC', cursor: 'pointer' }}>Search</span>
+          <span style={{ marginRight: '15px', color: '#0066CC', cursor: 'pointer' }}>Members</span>
+          <span style={{ color: '#0066CC', cursor: 'pointer' }}>Help</span>
+        </div>
+        <div>
+          <span
+            onClick={handleLogout}
+            style={{ color: '#CC0000', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Logout
+          </span>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: '900px', margin: '20px auto', padding: '0 15px' }}>
+        {/* Error Message */}
+        {error && (
+          <div style={{
+            backgroundColor: '#FFE6E6',
+            border: '2px solid #CC0000',
+            padding: '10px',
+            marginBottom: '15px',
+            borderRadius: '3px'
+          }}>
+            <strong style={{ color: '#CC0000' }}>Error:</strong> {error}
+          </div>
+        )}
+
+        {/* Post Form */}
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #CCCCCC',
+          marginBottom: '20px',
+          boxShadow: '2px 2px 5px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            background: 'linear-gradient(to bottom, #F0F0F0, #D8D8D8)',
+            padding: '8px 12px',
+            borderBottom: '1px solid #999',
+            fontWeight: 'bold',
+            color: '#333'
+          }}>
+            {replyTo ? `Reply to: ${replyTo.title}` : '✎ Post New Message'}
+          </div>
+          <div style={{ padding: '15px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {!replyTo && (
+                  <tr>
+                    <td style={{ padding: '5px', width: '100px', fontWeight: 'bold' }}>Subject:</td>
+                    <td style={{ padding: '5px' }}>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '4px',
+                          border: '1px solid #999',
+                          fontSize: '11px'
+                        }}
+                        maxLength={100}
+                      />
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  <td style={{ padding: '5px', fontWeight: 'bold', verticalAlign: 'top' }}>Message:</td>
+                  <td style={{ padding: '5px' }}>
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      style={{
+                        width: '100%',
+                        height: '100px',
+                        padding: '4px',
+                        border: '1px solid #999',
+                        fontSize: '11px',
+                        fontFamily: 'Verdana, Arial, sans-serif'
+                      }}
+                      maxLength={1000}
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td></td>
+                  <td style={{ padding: '5px' }}>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={loading}
+                      style={{
+                        padding: '5px 20px',
+                        backgroundColor: '#4A90E2',
+                        color: 'white',
+                        border: '1px solid #2E5C8A',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        marginRight: '10px'
+                      }}
+                    >
+                      {loading ? 'Posting...' : 'Post Message'}
+                    </button>
+                    {replyTo && (
+                      <button
+                        onClick={() => setReplyTo(null)}
+                        style={{
+                          padding: '5px 20px',
+                          backgroundColor: '#999',
+                          color: 'white',
+                          border: '1px solid #666',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                      >
+                        Cancel Reply
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Messages List */}
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #CCCCCC',
+          boxShadow: '2px 2px 5px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            background: 'linear-gradient(to bottom, #F0F0F0, #D8D8D8)',
+            padding: '8px 12px',
+            borderBottom: '1px solid #999',
+            fontWeight: 'bold',
+            color: '#333'
+          }}>
+            📋 Forum Topics ({messages.filter(m => !m.replyTo).length})
+          </div>
+          
+          {getThreadMessages().length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+              No messages yet. Be the first to post!
+            </div>
+          ) : (
+            getThreadMessages().map((thread) => (
+              <div key={thread.id}>
+                <div style={{
+                  padding: '12px',
+                  borderBottom: '1px solid #E0E0E0',
+                  backgroundColor: '#F9F9F9'
+                }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong style={{ color: '#0066CC', fontSize: '12px' }}>{thread.title}</strong>
+                    <span style={{ color: '#666', marginLeft: '10px', fontSize: '10px' }}>
+                      Replies: {thread.replies.length}
+                    </span>
+                  </div>
+                  <div style={{ color: '#333', marginBottom: '8px' }}>
+                    {thread.message}
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#666' }}>
+                    Posted by <strong style={{ color: '#E2704A' }}>{thread.username}</strong> on {formatDate(thread.timestamp)}
+                    <button
+                      onClick={() => setReplyTo(thread)}
+                      style={{
+                        marginLeft: '15px',
+                        padding: '2px 8px',
+                        fontSize: '10px',
+                        backgroundColor: '#4A90E2',
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        borderRadius: '2px'
+                      }}
+                    >
+                      Reply
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Replies */}
+                {thread.replies.map((reply) => (
+                  <div key={reply.id} style={{
+                    padding: '12px',
+                    paddingLeft: '40px',
+                    borderBottom: '1px solid #E0E0E0',
+                    backgroundColor: '#FAFAFA',
+                    borderLeft: '3px solid #4A90E2'
+                  }}>
+                    <div style={{ color: '#333', marginBottom: '8px' }}>
+                      {reply.message}
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#666' }}>
+                      ↳ Posted by <strong style={{ color: '#E2704A' }}>{reply.username}</strong> on {formatDate(reply.timestamp)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          textAlign: 'center',
+          padding: '20px',
+          color: '#666',
+          fontSize: '10px'
+        }}>
+          <div>Powered by AwesomeForum v1.0 • All times are GMT</div>
+          <div style={{ marginTop: '5px' }}>
+            <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" style={{ width: '88px', height: '31px', backgroundColor: '#4A90E2', display: 'inline-block', marginRight: '5px' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default RetroForum;
