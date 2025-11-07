@@ -1,179 +1,113 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>★ AWESOME FORUM 2008 ★</title>
+<meta charset="utf-8">
+<title>★ Awesome Forum 2008 ★</title>
 <style>
-  body { font-family: Verdana, Arial, sans-serif; font-size: 11px; background-color: #E8E8E8; margin:0; padding:0; }
-  .header { background: linear-gradient(to bottom, #4A90E2, #2E5C8A); color: #fff; padding: 15px; border-bottom: 3px solid #1A3A5A; }
-  .header h1 { margin:0; font-size:24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
-  .nav { background-color:#D4D4D4; padding: 8px 15px; border-bottom:1px solid #999; }
-  .nav span { margin-right:15px; color:#0066CC; cursor:pointer; }
-  .container { max-width:900px; margin:20px auto; padding:0 15px; }
-  .box { background:#FFF; border:1px solid #CCC; margin-bottom:20px; padding:10px; }
-  .box h2 { background: linear-gradient(to bottom, #F0F0F0, #D8D8D8); padding:5px 10px; border-bottom:1px solid #999; font-size:12px; margin:0; }
-  input, textarea { font-size:11px; width:100%; padding:4px; border:1px solid #999; margin-bottom:5px; }
-  button { padding:5px 10px; font-size:11px; cursor:pointer; background:#4A90E2; color:#fff; border:1px solid #2E5C8A; }
-  .message { padding:10px; border-bottom:1px solid #EEE; background:#F9F9F9; }
-  .reply { padding-left:40px; border-left:3px solid #4A90E2; background:#FAFAFA; }
-  .error { background:#FFE6E6; border:2px solid #CC0000; padding:5px; margin-bottom:10px; color:#CC0000; }
-  .footer { text-align:center; font-size:10px; color:#666; padding:20px; }
+body{font-family:Verdana,Arial,sans-serif;font-size:12px;background:#E8E8E8;margin:0;padding:0;}
+.header{background:linear-gradient(#4A90E2,#2E5C8A);color:#fff;padding:10px;text-align:center;}
+.container{max-width:700px;margin:20px auto;padding:10px;background:#fff;border:1px solid #ccc;}
+input,textarea,button{font-size:12px;}
+.message{border-bottom:1px solid #ccc;padding:5px;margin-bottom:5px;}
+.reply{margin-left:20px;border-left:2px solid #4A90E2;padding-left:5px;padding-top:3px;}
+.admin-btn{margin-left:10px;background:red;color:#fff;border:none;cursor:pointer;font-size:10px;}
 </style>
 </head>
 <body>
-
 <div class="header">
-  <h1>★ AWESOME FORUM 2008 ★</h1>
-  <div id="userInfo">Please login to continue</div>
+  <h1>★ Awesome Forum 2008 ★</h1>
+  <div id="welcome"></div>
 </div>
 
-<div class="nav">
-  <span onclick="showLogin()">Home</span>
-  <span>Search</span>
-  <span>Members</span>
-  <span>Help</span>
-  <span id="logoutBtn" style="color:#CC0000; font-weight:bold; display:none;" onclick="logout()">Logout</span>
+<div class="container" id="auth">
+<h3>Login / Register</h3>
+<input id="username" placeholder="Username"><br><br>
+<input id="email" placeholder="Email (register only)"><br><br>
+<input id="password" type="password" placeholder="Password"><br><br>
+<button onclick="login()">Login</button>
+<button onclick="register()">Register</button>
+<div id="error" style="color:red;margin-top:10px;"></div>
 </div>
 
-<div class="container">
-  
-  <div id="error" class="error" style="display:none"></div>
-  
-  <!-- Login/Register -->
-  <div id="authBox" class="box">
-    <h2 id="authTitle">🔐 Member Login</h2>
-    <div>
-      <label>Username:</label>
-      <input type="text" id="authUsername">
-      <label id="emailLabel" style="display:none;">Email:</label>
-      <input type="email" id="authEmail" style="display:none;">
-      <label>Password:</label>
-      <input type="password" id="authPassword">
-      <button onclick="handleAuth()">Login</button>
-      <div style="margin-top:5px;">
-        <span id="toggleAuth" style="color:#0066CC; cursor:pointer; text-decoration:underline;">Register here</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Forum -->
-  <div id="forumBox" style="display:none;">
-    <div class="box">
-      <h2>✎ Post New Message</h2>
-      <input type="text" id="postTitle" placeholder="Subject">
-      <textarea id="postMessage" placeholder="Message"></textarea>
-      <button onclick="postMessage()">Post Message</button>
-    </div>
-
-    <div id="messages"></div>
-  </div>
-
-</div>
-
-<div class="footer">
-  Powered by AwesomeForum v1.0 • All times are GMT
+<div class="container" id="forum" style="display:none;">
+<h3>Post New Message</h3>
+<input id="title" placeholder="Subject"><br><br>
+<textarea id="msg" placeholder="Message"></textarea><br><br>
+<button onclick="postMessage()">Post</button>
+<hr>
+<h3>Messages</h3>
+<div id="messages"></div>
 </div>
 
 <script>
-const API_URL = "https://your-forum-api.onrender.com"; // Replace with your Flask API
-let currentUser = null;
-let isRegister = false;
+const API='https://your-forum-api.onrender.com';
+let currentUser=null;
 
-document.getElementById('toggleAuth').onclick = () => {
-  isRegister = !isRegister;
-  document.getElementById('emailLabel').style.display = isRegister ? 'block' : 'none';
-  document.getElementById('authEmail').style.display = isRegister ? 'block' : 'none';
-  document.getElementById('authTitle').innerText = isRegister ? '📝 Register New Account' : '🔐 Member Login';
-  document.getElementById('toggleAuth').innerText = isRegister ? 'Login here' : 'Register here';
-};
+function setWelcome(){document.getElementById('welcome').innerText=currentUser?'Welcome '+currentUser.username:'Please login';}
 
-function showError(msg) {
-  const e = document.getElementById('error');
-  e.style.display='block';
-  e.innerText = msg;
-}
-
-function clearError() {
-  const e = document.getElementById('error');
-  e.style.display='none';
-  e.innerText = '';
-}
-
-function showForum() {
-  document.getElementById('authBox').style.display='none';
-  document.getElementById('forumBox').style.display='block';
-  document.getElementById('logoutBtn').style.display='inline';
-  document.getElementById('userInfo').innerHTML = "Welcome back, <b>"+currentUser.username+"</b>!";
-  loadMessages();
-}
-
-function showLogin() {
-  document.getElementById('authBox').style.display='block';
-  document.getElementById('forumBox').style.display='none';
-  document.getElementById('logoutBtn').style.display='none';
-  document.getElementById('userInfo').innerText = "Please login to continue";
-}
-
-function handleAuth() {
-  clearError();
-  const username = document.getElementById('authUsername').value.trim();
-  const password = document.getElementById('authPassword').value;
-  const email = document.getElementById('authEmail').value.trim();
-
-  if(!username || !password || (isRegister && !email)) { showError("All fields required!"); return; }
-  if(password.length<6) { showError("Password too short!"); return; }
-
-  fetch(`${API_URL}/${isRegister ? 'register':'login'}`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({username,password,email})
-  }).then(r=>r.json()).then(data=>{
-    if(data.error) { showError(data.error); }
-    else { currentUser = {username:data.username,email:data.email}; showForum(); }
-  }).catch(e=>showError("API Error!"));
-}
-
-function logout() {
-  currentUser = null;
-  showLogin();
-}
-
-function postMessage() {
-  clearError();
-  const title = document.getElementById('postTitle').value.trim() || 'No Subject';
-  const msg = document.getElementById('postMessage').value.trim();
-  if(!msg) { showError("Message required!"); return; }
-  const newMsg = {id:Date.now(), username: currentUser.username, title, message: msg, timestamp:new Date().toISOString(), replyTo:null};
-  fetch(`${API_URL}/messages`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(newMsg)
-  }).then(r=>r.json()).then(data=>{
-    document.getElementById('postTitle').value='';
-    document.getElementById('postMessage').value='';
-    loadMessages();
-  }).catch(e=>showError("Failed to post!"));
-}
-
-function loadMessages() {
-  fetch(`${API_URL}/messages`).then(r=>r.json()).then(data=>{
-    const container = document.getElementById('messages');
-    container.innerHTML='';
-    (data.messages||[]).filter(m=>!m.replyTo).forEach(thread=>{
-      const div = document.createElement('div');
-      div.className='message';
-      div.innerHTML = `<b>${thread.title}</b> by <i>${thread.username}</i><br>${thread.message}`;
-      container.appendChild(div);
-      (data.messages||[]).filter(m=>m.replyTo===thread.id).forEach(reply=>{
-        const rdiv = document.createElement('div');
-        rdiv.className='reply';
-        rdiv.innerHTML = `↳ ${reply.message} by <i>${reply.username}</i>`;
-        container.appendChild(rdiv);
-      });
-    });
+async function loadMessages(){
+  const res=await fetch(`${API}/messages`);
+  const data=await res.json();
+  const msgDiv=document.getElementById('messages'); msgDiv.innerHTML='';
+  const threads=(data.messages||[]).filter(m=>!m.replyTo);
+  threads.forEach(t=>{
+    const div=createMessageDiv(t,0);
+    msgDiv.appendChild(div);
+    renderReplies(div,t.id,data.messages||[],1);
   });
 }
-</script>
 
+function createMessageDiv(msg,level){
+  const div=document.createElement('div');
+  div.className=level>0?'reply':'message';
+  div.innerHTML=`<b>${msg.title}</b> by ${msg.username}: ${msg.message}`;
+  if(currentUser?.username==='admin'){
+    let btn=document.createElement('button'); btn.innerText='Delete'; btn.className='admin-btn';
+    btn.onclick=()=>deleteMsg(msg.id); div.appendChild(btn);
+  }
+  return div;
+}
+
+function renderReplies(parentDiv,parentId,allMsgs,level){
+  const replies=allMsgs.filter(m=>m.replyTo===parentId);
+  replies.forEach(r=>{
+    const rdiv=createMessageDiv(r,level);
+    parentDiv.appendChild(rdiv);
+    renderReplies(rdiv,r.id,allMsgs,level+1);
+  });
+}
+
+async function login(){
+  const u=document.getElementById('username').value;
+  const p=document.getElementById('password').value;
+  const res=await fetch(`${API}/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+  const d=await res.json();
+  if(res.ok){currentUser=d;document.getElementById('auth').style.display='none';document.getElementById('forum').style.display='block';setWelcome();loadMessages();document.getElementById('error').innerText='';}
+  else document.getElementById('error').innerText=d.error||'Login failed';
+}
+
+async function register(){
+  const u=document.getElementById('username').value;
+  const p=document.getElementById('password').value;
+  const e=document.getElementById('email').value;
+  const res=await fetch(`${API}/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,email:e,joinDate:new Date().toISOString()})});
+  const d=await res.json();
+  if(res.ok){alert('Registered! Please login.');}
+  else document.getElementById('error').innerText=d.error||'Register failed';
+}
+
+async function postMessage(){
+  const t=document.getElementById('title').value||'No Subject';
+  const m=document.getElementById('msg').value;
+  if(!m)return alert('Message required');
+  await fetch(`${API}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Date.now(),username:currentUser.username,title:t,message:m,timestamp:new Date().toISOString(),replyTo:null})});
+  document.getElementById('title').value=''; document.getElementById('msg').value=''; loadMessages();
+}
+
+async function deleteMsg(id){
+  await fetch(`${API}/messages/${id}?user=admin`,{method:'DELETE'});
+  loadMessages();
+}
+</script>
 </body>
 </html>
