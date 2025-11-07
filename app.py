@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template_string
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import hashlib
+from datetime import datetime
 
 app = Flask(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -9,7 +10,13 @@ limiter.init_app(app)
 
 # --- Users ---
 users = {
-    "admin": {"password": hashlib.sha256("admin123123".encode()).hexdigest(), "is_admin": True}
+    "admin": {
+        "password": hashlib.sha256("admin123123".encode()).hexdigest(),
+        "is_admin": True,
+        "joined": datetime.now().strftime("%Y-%m-%d"),
+        "banned": False,
+        "online": False
+    }
 }
 
 # --- Messages storage ---
@@ -34,6 +41,7 @@ def index():
             .message { border-bottom:1px solid #E0E0E0; padding:8px; }
             .reply { margin-left:30px; border-left:3px solid #4A90E2; padding-left:8px; background:#FAFAFA; }
             .admin { color:red; font-weight:bold; }
+            .profile { border:1px solid #999; background:#f0f0f0; padding:8px; position:absolute; display:none; }
         </style>
     </head>
     <body>
@@ -64,8 +72,12 @@ def index():
                 <div id="messagesBox"></div>
             </div>
         </div>
+
+        <div id="profileBox" class="profile"></div>
+
         <script>
             let currentUser = null;
+            let isAdmin = false;
             let replyTo = null;
 
             async function login() {
@@ -79,6 +91,7 @@ def index():
                 const data = await res.json();
                 if(data.success) {
                     currentUser = data.username;
+                    isAdmin = data.is_admin;
                     document.getElementById('authBox').style.display='none';
                     document.getElementById('forumBox').style.display='block';
                     loadMessages();
@@ -152,14 +165,26 @@ def index():
                 container.innerHTML='';
                 data.messages.filter(m=>!m.replyTo).forEach(m=>{
                     let html = `<div class="box message">
-                        <strong>${m.title}</strong> by ${m.username}${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>
-                        <button onclick='startReply(${m.id},"${m.title.replace(/"/g,'&quot;')}")'>Reply</button>
-                    </div>`;
+                        <strong>${m.title}</strong> by <span onclick="showProfile('${m.username}', event)" style="cursor:pointer; text-decoration:underline;">${m.username}</span>${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>`;
+                    if(isAdmin) html += `<button onclick="deleteMessage(${m.id})">Delete</button> <button onclick="banUser('${m.username}')">Ban User</button>`;
+                    html += ` <button onclick='startReply(${m.id},"${m.title.replace(/"/g,'&quot;')}")'>Reply</button>`;
+                    html += `</div>`;
                     container.innerHTML += html;
+
                     data.messages.filter(r=>r.replyTo===m.id).forEach(r=>{
                         container.innerHTML += `<div class="box reply">${r.username}${r.is_admin?' <span class="admin">[ADMIN]</span>':''}: ${r.message}</div>`;
                     });
                 });
+            }
+
+            async function deleteMessage(id){
+                await fetch(`/delete_message/${id}`,{method:'POST'});
+                loadMessages();
+            }
+
+            async function banUser(username){
+                await fetch(`/ban_user/${username}`,{method:'POST'});
+                loadMessages();
             }
 
             function startReply(id,title){
@@ -170,8 +195,22 @@ def index():
 
             function logout(){
                 currentUser=null;
+                isAdmin=false;
                 document.getElementById('authBox').style.display='block';
                 document.getElementById('forumBox').style.display='none';
+            }
+
+            async function showProfile(username, event){
+                const res = await fetch(`/profile/${username}`);
+                const data = await res.json();
+                const box = document.getElementById('profileBox');
+                box.style.display='block';
+                box.style.left=event.pageX+'px';
+                box.style.top=event.pageY+'px';
+                box.innerHTML = `<strong>${data.username}</strong>${data.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>
+                                 Joined: ${data.joined}<br>
+                                 Status: ${data.online ? 'Online':'Offline'}`;
+                setTimeout(()=>{ box.style.display='none'; }, 5000);
             }
         </script>
     </body>
@@ -188,7 +227,13 @@ def register():
         return jsonify(success=False,error="Username and password required")
     if u in users:
         return jsonify(success=False,error="Username already exists")
-    users[u] = {"password": hashlib.sha256(p.encode()).hexdigest(), "is_admin": False}
+    users[u] = {
+        "password": hashlib.sha256(p.encode()).hexdigest(),
+        "is_admin": False,
+        "joined": datetime.now().strftime("%Y-%m-%d"),
+        "banned": False,
+        "online": False
+    }
     return jsonify(success=True)
 
 @app.route("/login", methods=["POST"])
@@ -196,14 +241,18 @@ def login_route():
     data = request.get_json()
     u = data.get("username","").strip()
     p = data.get("password","")
-    if u in users and hashlib.sha256(p.encode()).hexdigest() == users[u]["password"]:
-        return jsonify(success=True, username=u, is_admin=users[u]["is_admin"])
-    return jsonify(success=False, error="Invalid credentials")
+    user = users.get(u)
+    if user and not user["banned"] and hashlib.sha256(p.encode()).hexdigest() == user["password"]:
+        user["online"] = True
+        return jsonify(success=True, username=u, is_admin=user["is_admin"])
+    return jsonify(success=False, error="Invalid credentials or banned user")
 
 @app.route("/messages", methods=["GET","POST"])
 def msgs():
     if request.method=="POST":
         data = request.get_json()
+        if users.get(data.get("username"),{}).get("banned"): 
+            return jsonify(success=False,error="You are banned")
         new_msg = {
             "id": len(messages)+1,
             "username": data.get("username"),
@@ -215,6 +264,24 @@ def msgs():
         messages.append(new_msg)
         return jsonify(success=True)
     return jsonify(messages=messages)
+
+@app.route("/delete_message/<int:id>", methods=["POST"])
+def delete_message(id):
+    messages[:] = [m for m in messages if m["id"] != id]
+    return jsonify(success=True)
+
+@app.route("/ban_user/<username>", methods=["POST"])
+def ban_user(username):
+    if username in users:
+        users[username]["banned"] = True
+    return jsonify(success=True)
+
+@app.route("/profile/<username>")
+def profile(username):
+    user = users.get(username)
+    if not user:
+        return jsonify(success=False,error="User not found")
+    return jsonify(username=username, is_admin=user["is_admin"], joined=user["joined"], online=user["online"])
 
 if __name__=="__main__":
     app.run(debug=True)
