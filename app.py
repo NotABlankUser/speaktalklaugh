@@ -1,193 +1,175 @@
 from flask import Flask, request, jsonify, render_template_string
-from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import hashlib
 import datetime
 
 app = Flask(__name__)
-CORS(app)
-limiter = Limiter(key_func=get_remote_address)  # don't pass app here
-limiter.init_app(app)  # <-- attach limiter to the app
+limiter = Limiter(key_func=get_remote_address)
+limiter.init_app(app)
 
-
-# In-memory DB
-users = {}
-messages = []
-
-# Admin
-admin_username = "admin"
-admin_password = "admin123123"
-users[admin_username] = {
-    "username": admin_username,
-    "password": hashlib.sha256(admin_password.encode()).hexdigest(),
-    "email": "admin@forum.com",
-    "is_admin": True,
-    "joinDate": str(datetime.datetime.utcnow())
+# --- Users ---
+users = {
+    "admin": {"password": hashlib.sha256("admin123123".encode()).hexdigest(), "is_admin": True}
 }
 
-# --- API ---
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.json
-    username = data.get("username", "").strip()
-    password = data.get("password", "")
-    email = data.get("email", "").strip()
-    if not username or not password or not email:
-        return jsonify({"error": "All fields required"}), 400
-    if username in users:
-        return jsonify({"error": "Username exists"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Password too short"}), 400
-    users[username] = {
-        "username": username,
-        "password": hashlib.sha256(password.encode()).hexdigest(),
-        "email": email,
-        "is_admin": False,
-        "joinDate": str(datetime.datetime.utcnow())
-    }
-    return jsonify({"message": "User created"}), 200
+# --- Messages storage ---
+messages = []
+
+# --- Routes ---
+@app.route("/")
+def index():
+    html = """
+    <html>
+    <head>
+        <title>Retro Forum 2008</title>
+        <style>
+            body { font-family: Verdana,sans-serif; font-size:11px; background:#E8E8E8; margin:0; }
+            .header { background:linear-gradient(to bottom,#4A90E2,#2E5C8A); padding:15px; color:white; text-align:center; border-bottom:3px solid #1A3A5A; }
+            .container { max-width:900px; margin:20px auto; }
+            .box { background:#fff; border:1px solid #ccc; margin-bottom:20px; }
+            .box-header { background:linear-gradient(to bottom,#F0F0F0,#D8D8D8); padding:8px 12px; font-weight:bold; border-bottom:1px solid #999; }
+            .box-body { padding:10px; }
+            input, textarea { width:100%; padding:4px; margin:2px 0; font-size:11px; }
+            button { padding:4px 8px; font-size:11px; background:#4A90E2; color:white; border:1px solid #2E5C8A; cursor:pointer; }
+            .message { border-bottom:1px solid #E0E0E0; padding:8px; }
+            .reply { margin-left:30px; border-left:3px solid #4A90E2; padding-left:8px; background:#FAFAFA; }
+            .admin { color:red; font-weight:bold; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>★ AWESOME FORUM 2008 ★</h1>
+        </div>
+        <div class="container">
+            <div id="loginBox" class="box">
+                <div class="box-header">Login</div>
+                <div class="box-body">
+                    Username:<br><input id="username"><br>
+                    Password:<br><input type="password" id="password"><br>
+                    <button onclick="login()">Login</button>
+                </div>
+            </div>
+            <div id="forumBox" style="display:none;">
+                <div class="box">
+                    <div class="box-header">New Message</div>
+                    <div class="box-body">
+                        <div id="replyInfo" style="display:none;">Replying to: <span id="replyToTitle"></span> <button onclick="cancelReply()">Cancel</button></div>
+                        Subject:<br><input id="title"><br>
+                        Message:<br><textarea id="msg"></textarea><br>
+                        <button onclick="postMessage()">Post</button>
+                        <button onclick="logout()">Logout</button>
+                    </div>
+                </div>
+                <div id="messagesBox"></div>
+            </div>
+        </div>
+        <script>
+            let currentUser = null;
+            let replyTo = null;
+
+            async function login() {
+                const u = document.getElementById('username').value;
+                const p = document.getElementById('password').value;
+                const res = await fetch('/login', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({username:u,password:p})
+                });
+                const data = await res.json();
+                if(data.success) {
+                    currentUser = data.username;
+                    document.getElementById('loginBox').style.display='none';
+                    document.getElementById('forumBox').style.display='block';
+                    loadMessages();
+                } else alert(data.error);
+            }
+
+            async function postMessage() {
+                const m = document.getElementById('msg').value;
+                const t = document.getElementById('title').value;
+                if(!m) return alert("Message required");
+                await fetch('/messages',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        username:currentUser,
+                        title:t,
+                        message:m,
+                        replyTo: replyTo ? replyTo.id : null
+                    })
+                });
+                document.getElementById('msg').value='';
+                document.getElementById('title').value='';
+                replyTo = null;
+                document.getElementById('replyInfo').style.display='none';
+                loadMessages();
+            }
+
+            function cancelReply() {
+                replyTo = null;
+                document.getElementById('replyInfo').style.display='none';
+            }
+
+            async function loadMessages() {
+                const res = await fetch('/messages');
+                const data = await res.json();
+                const container = document.getElementById('messagesBox');
+                container.innerHTML='';
+                data.messages.filter(m=>!m.replyTo).forEach(m=>{
+                    let html = `<div class="box message">
+                        <strong>${m.title}</strong> by ${m.username}${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>
+                        <button onclick='startReply(${m.id},"${m.title.replace(/"/g,'&quot;')}")'>Reply</button>
+                    </div>`;
+                    container.innerHTML += html;
+                    data.messages.filter(r=>r.replyTo===m.id).forEach(r=>{
+                        container.innerHTML += `<div class="box reply">${r.username}${r.is_admin?' <span class="admin">[ADMIN]</span>':''}: ${r.message}</div>`;
+                    });
+                });
+            }
+
+            function startReply(id,title){
+                replyTo = {id:id,title:title};
+                document.getElementById('replyInfo').style.display='block';
+                document.getElementById('replyToTitle').innerText = title;
+            }
+
+            function logout(){
+                currentUser=null;
+                document.getElementById('loginBox').style.display='block';
+                document.getElementById('forumBox').style.display='none';
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
 
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.json
-    username = data.get("username", "").strip()
-    password = data.get("password", "")
-    user = users.get(username)
-    if not user or user["password"] != hashlib.sha256(password.encode()).hexdigest():
-        return jsonify({"error": "Invalid username or password"}), 401
-    return jsonify({"username": user["username"], "email": user["email"], "is_admin": user["is_admin"]})
+    data = request.get_json()
+    u = data.get("username","").strip()
+    p = data.get("password","")
+    if u in users and hashlib.sha256(p.encode()).hexdigest() == users[u]["password"]:
+        return jsonify(success=True, username=u, is_admin=users[u]["is_admin"])
+    return jsonify(success=False, error="Invalid credentials")
 
-@app.route("/messages", methods=["GET"])
-def get_messages():
-    return jsonify({"messages": messages})
+@app.route("/messages", methods=["GET","POST"])
+def msgs():
+    if request.method=="POST":
+        data = request.get_json()
+        new_msg = {
+            "id": len(messages)+1,
+            "username": data.get("username"),
+            "title": data.get("title") or "No Subject",
+            "message": data.get("message"),
+            "replyTo": data.get("replyTo"),
+            "is_admin": users.get(data.get("username"),{}).get("is_admin",False)
+        }
+        messages.append(new_msg)
+        return jsonify(success=True)
+    return jsonify(messages=messages)
 
-@app.route("/messages", methods=["POST"])
-def post_message():
-    data = request.json
-    username = data.get("username")
-    message_text = data.get("message", "").strip()
-    title = data.get("title", "No Subject")
-    reply_to = data.get("replyTo", None)
-    if not username or not message_text:
-        return jsonify({"error": "Username and message required"}), 400
-    message = {
-        "id": len(messages) + 1,
-        "username": username,
-        "title": title,
-        "message": message_text,
-        "timestamp": str(datetime.datetime.utcnow()),
-        "replyTo": reply_to
-    }
-    messages.append(message)
-    return jsonify({"message": "Message posted"}), 200
+if __name__=="__main__":
+    app.run(debug=True)
 
-@app.route("/messages/<int:msg_id>", methods=["DELETE"])
-def delete_message(msg_id):
-    username = request.args.get("username")
-    user = users.get(username)
-    if not user or not user.get("is_admin"):
-        return jsonify({"error": "Unauthorized"}), 403
-    global messages
-    messages = [m for m in messages if m["id"] != msg_id]
-    return jsonify({"message": "Message deleted"}), 200
-
-# --- Serve retro HTML ---
-@app.route("/")
-def index():
-    return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>★ AWESOME FORUM 2008 ★</title>
-<style>
-body { font-family: Verdana, sans-serif; font-size: 12px; background:#E8E8E8; }
-.header { background: #4A90E2; color:white; padding: 10px; text-align:center; }
-.box { background:white; padding:10px; border:1px solid #999; margin:10px auto; width:90%; }
-input, textarea { width:100%; padding:5px; font-size:12px; }
-button { padding:5px 10px; background:#4A90E2; color:white; border:none; cursor:pointer; }
-.thread { border-bottom:1px solid #ccc; padding:5px; }
-.reply { margin-left:20px; border-left:2px solid #4A90E2; padding-left:5px; }
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>★ AWESOME FORUM 2008 ★</h1>
-  <div id="login-section">Please login or register</div>
-</div>
-
-<div class="box" id="auth-box">
-  <input type="text" id="username" placeholder="Username">
-  <input type="email" id="email" placeholder="Email (register only)">
-  <input type="password" id="password" placeholder="Password">
-  <button onclick="handleLogin()">Login / Register</button>
-  <div id="auth-error" style="color:red;"></div>
-</div>
-
-<div class="box" id="forum-box" style="display:none;">
-  <h3>Post a message</h3>
-  <input type="text" id="title" placeholder="Title">
-  <textarea id="message" placeholder="Message"></textarea>
-  <button onclick="postMessage()">Post</button>
-  <div id="forum-error" style="color:red;"></div>
-  <h3>Messages</h3>
-  <div id="threads"></div>
-</div>
-
-<script>
-let currentUser = null;
-
-async function handleLogin(){
-  const username = document.getElementById('username').value;
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-  let res;
-  if(email){
-    res = await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password,email})});
-  } else {
-    res = await fetch('/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
-  }
-  const data = await res.json();
-  if(res.ok){
-    currentUser = {username:data.username};
-    document.getElementById('auth-box').style.display='none';
-    document.getElementById('forum-box').style.display='block';
-    loadMessages();
-  } else {
-    document.getElementById('auth-error').innerText = data.error;
-  }
-}
-
-async function loadMessages(){
-  const res = await fetch('/messages');
-  const data = await res.json();
-  const container = document.getElementById('threads');
-  container.innerHTML = '';
-  data.messages.forEach(msg=>{
-    const div = document.createElement('div');
-    div.className='thread';
-    div.innerHTML = '<b>'+msg.title+'</b> by '+msg.username+'<br>'+msg.message;
-    container.appendChild(div);
-  });
-}
-
-async function postMessage(){
-  const title = document.getElementById('title').value;
-  const message = document.getElementById('message').value;
-  const res = await fetch('/messages', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:currentUser.username,title,message})});
-  const data = await res.json();
-  if(res.ok){
-    document.getElementById('title').value='';
-    document.getElementById('message').value='';
-    loadMessages();
-  } else {
-    document.getElementById('forum-error').innerText=data.error;
-  }
-}
-</script>
-</body>
-</html>
-""")
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
