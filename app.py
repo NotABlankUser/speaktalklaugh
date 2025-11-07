@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, render_template_string
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import hashlib
-import datetime
 
 app = Flask(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -42,12 +41,13 @@ def index():
             <h1>★ AWESOME FORUM 2008 ★</h1>
         </div>
         <div class="container">
-            <div id="loginBox" class="box">
-                <div class="box-header">Login</div>
+            <div id="authBox" class="box">
+                <div class="box-header" id="authHeader">Login</div>
                 <div class="box-body">
                     Username:<br><input id="username"><br>
                     Password:<br><input type="password" id="password"><br>
                     <button onclick="login()">Login</button>
+                    <button onclick="showRegister()">Register</button>
                 </div>
             </div>
             <div id="forumBox" style="display:none;">
@@ -69,7 +69,7 @@ def index():
             let replyTo = null;
 
             async function login() {
-                const u = document.getElementById('username').value;
+                const u = document.getElementById('username').value.trim();
                 const p = document.getElementById('password').value;
                 const res = await fetch('/login', {
                     method:'POST',
@@ -79,10 +79,44 @@ def index():
                 const data = await res.json();
                 if(data.success) {
                     currentUser = data.username;
-                    document.getElementById('loginBox').style.display='none';
+                    document.getElementById('authBox').style.display='none';
                     document.getElementById('forumBox').style.display='block';
                     loadMessages();
                 } else alert(data.error);
+            }
+
+            async function registerUser() {
+                const u = document.getElementById('username').value.trim();
+                const p = document.getElementById('password').value;
+                if(!u || !p) return alert("Username and password required");
+                const res = await fetch('/register',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({username:u,password:p})
+                });
+                const data = await res.json();
+                if(data.success){
+                    alert("Registration successful! You can login now.");
+                    showLogin();
+                } else alert(data.error);
+            }
+
+            function showRegister(){
+                document.getElementById('authHeader').innerText='Register';
+                const btns = document.querySelectorAll('#authBox button');
+                btns[0].innerText='Register';
+                btns[0].onclick=registerUser;
+                btns[1].innerText='Back to Login';
+                btns[1].onclick=showLogin;
+            }
+
+            function showLogin(){
+                document.getElementById('authHeader').innerText='Login';
+                const btns = document.querySelectorAll('#authBox button');
+                btns[0].innerText='Login';
+                btns[0].onclick=login;
+                btns[1].innerText='Register';
+                btns[1].onclick=showRegister;
             }
 
             async function postMessage() {
@@ -136,7 +170,7 @@ def index():
 
             function logout(){
                 currentUser=null;
-                document.getElementById('loginBox').style.display='block';
+                document.getElementById('authBox').style.display='block';
                 document.getElementById('forumBox').style.display='none';
             }
         </script>
@@ -145,8 +179,20 @@ def index():
     """
     return render_template_string(html)
 
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    u = data.get("username","").strip()
+    p = data.get("password","")
+    if not u or not p:
+        return jsonify(success=False,error="Username and password required")
+    if u in users:
+        return jsonify(success=False,error="Username already exists")
+    users[u] = {"password": hashlib.sha256(p.encode()).hexdigest(), "is_admin": False}
+    return jsonify(success=True)
+
 @app.route("/login", methods=["POST"])
-def login():
+def login_route():
     data = request.get_json()
     u = data.get("username","").strip()
     p = data.get("password","")
@@ -172,4 +218,3 @@ def msgs():
 
 if __name__=="__main__":
     app.run(debug=True)
-
