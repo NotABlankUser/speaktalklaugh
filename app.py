@@ -7,7 +7,9 @@ import datetime
 
 app = Flask(__name__)
 CORS(app)
-limiter = Limiter(app, key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address)  # <-- remove app from here
+limiter.init_app(app)  # <-- attach limiter to the app
+
 
 # In-memory DB
 users = {}
