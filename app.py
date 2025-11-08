@@ -932,22 +932,26 @@ def messages():
         user = users_table.get(Query().username == data['username'])
         msg_id = len(messages_table) + 1
         
-        # XSS Protection for messages
+        # XSS Protection for messages. Previous version was broken.
         title = data.get('title', '(No Subject)')
-        message = data['message']
+        message = data.get('message', '')
         
-        # Sanitize title and message
-        if title:
+        # Sanitize title and message - but keep them as strings
+        if title and isinstance(title, str):
             title = html.escape(title)
             title = re.sub(r'javascript:', '', title, flags=re.IGNORECASE)
             title = re.sub(r'vbscript:', '', title, flags=re.IGNORECASE)
             title = re.sub(r'on\w+\s*=', '', title, flags=re.IGNORECASE)
+        else:
+            title = '(No Subject)'
         
-        if message:
+        if message and isinstance(message, str):
             message = html.escape(message)
             message = re.sub(r'javascript:', '', message, flags=re.IGNORECASE)
             message = re.sub(r'vbscript:', '', message, flags=re.IGNORECASE)
             message = re.sub(r'on\w+\s*=', '', message, flags=re.IGNORECASE)
+        else:
+            message = ''
         
         messages_table.insert({
             'id': msg_id,
@@ -962,12 +966,8 @@ def messages():
             'badges': user.get('badges', [])
         })
         return jsonify(success=True)
-          except Exception as e:
-            print(f"Error in /messages: {e}")
-            return jsonify(success=False, error="Internal server error"), 500
-        
     return jsonify(messages=messages_table.all())
-
+    
 @app.route("/delete_message/<int:id>", methods=["POST"])
 def delete_message(id):
     messages_table.remove(Query().id == id)
