@@ -64,7 +64,7 @@ def index():
 </head>
 <body>
 <div class="header">
-    <h1>★ AWESOME FORUM 2008 ★</h1>
+    <h1>★ Admin's forum ★</h1>
 </div>
 <div class="container">
     <div id="authBox" class="box">
