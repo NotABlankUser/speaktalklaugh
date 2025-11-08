@@ -4,6 +4,22 @@ from datetime import datetime
 import re
 import time, html
 
+def contains_forbidden_tags(text):
+    """Prevent XSS by blocking common HTML tags."""
+    if not text:
+        return False
+    forbidden_tags = ["<script", "</script", "<img", "</img", "<iframe", "</iframe"]
+    lowered = text.lower()
+    return any(tag in lowered for tag in forbidden_tags)
+
+def escape_post(post):
+    """Escape HTML entities in post fields."""
+    safe = post.copy()
+    for field in ["username", "title", "message"]:
+        safe[field] = html.escape(str(post.get(field, "")))
+    return safe
+
+
 # Matches <script>, <img>, <iframe>, <svg>, and any "on*" attributes like onclick
 FORBIDDEN_TAGS = re.compile(r"<\s*(script|img|iframe|svg|on\w+)[^>]*>", re.IGNORECASE)
 
