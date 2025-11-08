@@ -1,50 +1,25 @@
 from flask import Flask, request, jsonify, render_template_string
 from tinydb import TinyDB, Query
 from datetime import datetime
+import html
 import re
-import time, html
-
-def contains_forbidden_tags(text):
-    """Prevent XSS by blocking common HTML tags."""
-    if not text:
-        return False
-    forbidden_tags = ["<script", "</script", "<img", "</img", "<iframe", "</iframe"]
-    lowered = text.lower()
-    return any(tag in lowered for tag in forbidden_tags)
-
-def escape_post(post):
-    """Escape HTML entities in post fields."""
-    safe = post.copy()
-    for field in ["username", "title", "message"]:
-        safe[field] = html.escape(str(post.get(field, "")))
-    return safe
-
-
-# Matches <script>, <img>, <iframe>, <svg>, and any "on*" attributes like onclick
-FORBIDDEN_TAGS = re.compile(r"<\s*(script|img|iframe|svg|on\w+)[^>]*>", re.IGNORECASE)
-
-def contains_forbidden_tags(s):
-    return bool(FORBIDDEN_TAGS.search(s)) #patch xss
-
 
 app = Flask(__name__)
 db = TinyDB('db.json')
-
 users_table = db.table('users')
 messages_table = db.table('messages')
 
-# Initialize admin if not exists
 if not users_table.contains(Query().username == 'admin'):
     users_table.insert({
         'username':'admin',
-        'password':'cooladmin',
+        'password':'Administrator555',
         'is_admin': True,
         'is_moderator': False,
         'joined': datetime.now().strftime('%Y-%m-%d'),
         'banned_until': None,
         'terminated': False,
         'online': False,
-        'badges': ['Administrator', 'Moderator']
+        'badges': ['Administrator']
     })
 
 html = """<!DOCTYPE html>
@@ -914,83 +889,80 @@ def login():
 
 @app.route("/register", methods=["POST"])
 def register():
-    data = request.get_json() or {}
-    username = data.get("username", "")
-    password = data.get("password", "")
+    data = request.get_json()
+    
+    # XSS Protection for register
+    username = data.get('username', '')
+    password = data.get('password', '')
+    
+    # Sanitize username and password
+    if username:
+        username = html.escape(username.strip())
+        # Remove dangerous patterns
+        username = re.sub(r'javascript:', '', username, flags=re.IGNORECASE)
+        username = re.sub(r'vbscript:', '', username, flags=re.IGNORECASE)
+        username = re.sub(r'on\w+\s*=', '', username, flags=re.IGNORECASE)
+    
+    if password:
+        password = html.escape(password)
+        password = re.sub(r'javascript:', '', password, flags=re.IGNORECASE)
+        password = re.sub(r'vbscript:', '', password, flags=re.IGNORECASE)
+        password = re.sub(r'on\w+\s*=', '', password, flags=re.IGNORECASE)
+    
+    if users_table.contains(Query().username == username):
+        return jsonify(success=False, error="Username already exists")
+    
+    users_table.insert({
+        'username': username,
+        'password': password,
+        'is_admin': False,
+        'is_moderator': False,
+        'joined': datetime.now().strftime('%Y-%m-%d'),
+        'banned_until': None,
+        'terminated': False,
+        'online': False,
+        'badges': []
+    })
+    return jsonify(success=True)
 
-    if not username.strip() or not password.strip():
-        return jsonify({"success": False, "error": "Username and password required"}), 400
-
-    # Block dangerous HTML tags
-    if contains_forbidden_tags(username) or contains_forbidden_tags(password):
-        return jsonify({"success": False, "error": "Username or password contains forbidden HTML tags"}), 400
-
-    if find_user(username):
-        return jsonify({"success": False, "error": "Username taken"}), 400
-
-    user = {
-        "user_id": str(uuid.uuid4()),
-        "username": username,
-        "password": password,
-        "joined": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-        "online": False,
-        "badges": [],
-        "is_admin": False,
-        "is_moderator": False
-    }
-    users_table.insert(user)
-    return jsonify({"success": True})
-
-
-@app.route("/messages", methods=["GET", "POST"])
+@app.route("/messages", methods=["GET","POST"])
 def messages():
-    try:
-        # --- GET: return all posts ---
-        if request.method == "GET":
-            all_posts = [escape_post(p) for p in posts_table.all()]
-            return jsonify({"success": True, "posts": all_posts}), 200
-
-        # --- POST: add new post ---
-        data = request.get_json(force=True) or {}
-
-        username = data.get("username", "").strip()
-        title = data.get("title", "").strip()
-        message = data.get("message", "").strip()
-        reply_to = data.get("replyTo")
-
-        # Basic validation
-        if not username or not message:
-            return jsonify({"success": False, "error": "Username and message required"}), 400
-
-        # Block dangerous HTML tags in title/message
-        if contains_forbidden_tags(title) or contains_forbidden_tags(message):
-            return jsonify({"success": False, "error": "Title or message contains forbidden HTML tags"}), 400
-
-        user = find_user(username)
-        user_id = user["user_id"] if user else f"unknown-{username}"
-        badges = user.get("badges", []) if user else []
-        is_admin = bool(user.get("is_admin", False)) if user else False
-        is_moderator = bool(user.get("is_moderator", False)) if user else False
-
-        new_post = {
-            "id": int(time.time() * 1000),
-            "user_id": user_id,
-            "username": username,
-            "title": title,
-            "message": message,
-            "replyTo": reply_to,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-            "badges": badges,
-            "is_admin": is_admin,
-            "is_moderator": is_moderator
-        }
-
-        posts_table.insert(new_post)
-        return jsonify({"success": True, "post": escape_post(new_post)}), 201
-
-    except Exception as e:
-        print(f"[ERROR /messages] {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    if request.method=="POST":
+        data = request.get_json()
+        user = users_table.get(Query().username == data['username'])
+        msg_id = len(messages_table) + 1
+        
+        # XSS Protection for messages
+        title = data.get('title', '(No Subject)')
+        message = data['message']
+        
+        # Sanitize title and message
+        if title:
+            title = html.escape(title)
+            title = re.sub(r'javascript:', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'vbscript:', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'on\w+\s*=', '', title, flags=re.IGNORECASE)
+        
+        if message:
+            message = html.escape(message)
+            message = re.sub(r'javascript:', '', message, flags=re.IGNORECASE)
+            message = re.sub(r'vbscript:', '', message, flags=re.IGNORECASE)
+            message = re.sub(r'on\w+\s*=', '', message, flags=re.IGNORECASE)
+        
+        messages_table.insert({
+            'id': msg_id,
+            'username': data['username'],
+            'user_id': user.doc_id,
+            'title': title,
+            'message': message,
+            'replyTo': data.get('replyTo'),
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'is_admin': user['is_admin'],
+            'is_moderator': user['is_moderator'],
+            'badges': user.get('badges', [])
+        })
+        return jsonify(success=True)
+    return jsonify(messages=messages_table.all())
 
 @app.route("/delete_message/<int:id>", methods=["POST"])
 def delete_message(id):
