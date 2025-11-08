@@ -299,7 +299,7 @@ def msgs():
             "title": data.get("title") or "No Subject",
             "message": data.get("message"),
             "replyTo": data.get("replyTo"),
-            "is_admin": users.get(data.get("username"),{}).get("is_admin",False)
+            "is_admin": users.get(data.get("username"),{}).get("is_admin",False),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
         }
         messages.append(new_msg)
