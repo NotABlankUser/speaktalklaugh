@@ -40,10 +40,12 @@ def index():
             .box-body { padding:10px; }
             input, textarea { width:100%; padding:4px; margin:2px 0; font-size:11px; }
             button { padding:4px 8px; font-size:11px; background:#4A90E2; color:white; border:1px solid #2E5C8A; cursor:pointer; }
-            .message { border-bottom:1px solid #E0E0E0; padding:8px; }
-            .reply { margin-left:30px; border-left:3px solid #4A90E2; padding-left:8px; background:#FAFAFA; }
+            .message { border-bottom:1px solid #E0E0E0; padding:8px; position:relative; }
+            .reply { margin-left:30px; border-left:3px solid #4A90E2; padding-left:8px; background:#FAFAFA; position:relative; }
             .admin { color:red; font-weight:bold; }
             .profile { border:1px solid #999; background:#f0f0f0; padding:8px; position:absolute; display:none; }
+            .timestamp { float:right; font-size:10px; color:#666; }
+            .actions { margin-top:5px; }
         </style>
     </head>
     <body>
@@ -83,7 +85,6 @@ def index():
             let isAdmin = false;
             let replyTo = null;
 
-            // --- Check localStorage on load ---
             window.onload = () => {
                 const savedUser = localStorage.getItem('currentUser');
                 const savedId = localStorage.getItem('currentUserId');
@@ -188,14 +189,21 @@ def index():
                 container.innerHTML='';
                 data.messages.filter(m=>!m.replyTo).forEach(m=>{
                     let html = `<div class="box message">
-                        <strong>${m.title}</strong> by <span onclick="showProfile('${m.username}', event)" style="cursor:pointer; text-decoration:underline;">${m.username}</span> (ID: ${m.userid})${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>`;
+                        <strong>${m.title}</strong><br>
+                        <span onclick="showProfile('${m.username}', event)" style="cursor:pointer; text-decoration:underline;">${m.username}</span> (ID: ${m.userid})${m.is_admin?' <span class="admin">[ADMIN]</span>':''} 
+                        <span class="timestamp">${m.timestamp}</span><br>
+                        ${m.message}
+                        <div class="actions">`;
                     if(isAdmin) html += `<button onclick="deleteMessage(${m.id})">Delete</button> <button onclick="banUser('${m.username}')">Ban User</button>`;
                     html += ` <button onclick='startReply(${m.id},"${m.title.replace(/"/g,'&quot;')}")'>Reply</button>`;
-                    html += `</div>`;
+                    html += `</div></div>`;
                     container.innerHTML += html;
 
                     data.messages.filter(r=>r.replyTo===m.id).forEach(r=>{
-                        container.innerHTML += `<div class="box reply">${r.username} (ID: ${r.userid})${r.is_admin?' <span class="admin">[ADMIN]</span>':''}: ${r.message}</div>`;
+                        container.innerHTML += `<div class="box reply">
+                            ${r.username} (ID: ${r.userid})${r.is_admin?' <span class="admin">[ADMIN]</span>':''} 
+                            <span class="timestamp">${r.timestamp}</span>: ${r.message}
+                        </div>`;
                     });
                 });
             }
