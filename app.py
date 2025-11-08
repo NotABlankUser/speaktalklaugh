@@ -232,12 +232,12 @@ html = """<!DOCTYPE html>
         <div class="header-subtitle">Welcome to the best forum on the internet!</div>
     </div>
     <div class="nav-bar">
-        <a href="#">Home</a>
-        <a href="#">Forums</a>
-        <a href="#">Members</a>
-        <a href="#">Search</a>
-        <a href="#">Help</a>
-    </div>
+    <a href="/home">Home</a>
+    <a href="/forums">Forums</a>
+    <a href="/members">Members</a>
+    <a href="/search">Search</a>
+    <a href="/help">Help</a>
+</div>
     <div class="container">
         <div id="authBox" class="box">
             <div class="box-header" id="authHeader">🔒 Member Login</div>
