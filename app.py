@@ -11,6 +11,7 @@ limiter.init_app(app)
 # --- Users ---
 users = {
     "admin": {
+        "userid": 1,
         "password": hashlib.sha256("admin123123".encode()).hexdigest(),
         "is_admin": True,
         "joined": datetime.now().strftime("%Y-%m-%d"),
@@ -18,6 +19,7 @@ users = {
         "online": False
     }
 }
+next_userid = 2
 
 # --- Messages storage ---
 messages = []
@@ -77,8 +79,24 @@ def index():
 
         <script>
             let currentUser = null;
+            let currentUserId = null;
             let isAdmin = false;
             let replyTo = null;
+
+            // --- Check localStorage on load ---
+            window.onload = () => {
+                const savedUser = localStorage.getItem('currentUser');
+                const savedId = localStorage.getItem('currentUserId');
+                const savedAdmin = localStorage.getItem('isAdmin');
+                if(savedUser && savedId){
+                    currentUser = savedUser;
+                    currentUserId = savedId;
+                    isAdmin = savedAdmin === 'true';
+                    document.getElementById('authBox').style.display='none';
+                    document.getElementById('forumBox').style.display='block';
+                    loadMessages();
+                }
+            };
 
             async function login() {
                 const u = document.getElementById('username').value.trim();
@@ -91,7 +109,11 @@ def index():
                 const data = await res.json();
                 if(data.success) {
                     currentUser = data.username;
+                    currentUserId = data.userid;
                     isAdmin = data.is_admin;
+                    localStorage.setItem('currentUser', currentUser);
+                    localStorage.setItem('currentUserId', currentUserId);
+                    localStorage.setItem('isAdmin', isAdmin);
                     document.getElementById('authBox').style.display='none';
                     document.getElementById('forumBox').style.display='block';
                     loadMessages();
@@ -141,6 +163,7 @@ def index():
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({
                         username:currentUser,
+                        userid: currentUserId,
                         title:t,
                         message:m,
                         replyTo: replyTo ? replyTo.id : null
@@ -165,14 +188,14 @@ def index():
                 container.innerHTML='';
                 data.messages.filter(m=>!m.replyTo).forEach(m=>{
                     let html = `<div class="box message">
-                        <strong>${m.title}</strong> by <span onclick="showProfile('${m.username}', event)" style="cursor:pointer; text-decoration:underline;">${m.username}</span>${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>`;
+                        <strong>${m.title}</strong> by <span onclick="showProfile('${m.username}', event)" style="cursor:pointer; text-decoration:underline;">${m.username}</span> (ID: ${m.userid})${m.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>${m.message}<br>`;
                     if(isAdmin) html += `<button onclick="deleteMessage(${m.id})">Delete</button> <button onclick="banUser('${m.username}')">Ban User</button>`;
                     html += ` <button onclick='startReply(${m.id},"${m.title.replace(/"/g,'&quot;')}")'>Reply</button>`;
                     html += `</div>`;
                     container.innerHTML += html;
 
                     data.messages.filter(r=>r.replyTo===m.id).forEach(r=>{
-                        container.innerHTML += `<div class="box reply">${r.username}${r.is_admin?' <span class="admin">[ADMIN]</span>':''}: ${r.message}</div>`;
+                        container.innerHTML += `<div class="box reply">${r.username} (ID: ${r.userid})${r.is_admin?' <span class="admin">[ADMIN]</span>':''}: ${r.message}</div>`;
                     });
                 });
             }
@@ -195,7 +218,11 @@ def index():
 
             function logout(){
                 currentUser=null;
+                currentUserId=null;
                 isAdmin=false;
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('currentUserId');
+                localStorage.removeItem('isAdmin');
                 document.getElementById('authBox').style.display='block';
                 document.getElementById('forumBox').style.display='none';
             }
@@ -209,7 +236,8 @@ def index():
                 box.style.top=event.pageY+'px';
                 box.innerHTML = `<strong>${data.username}</strong>${data.is_admin?' <span class="admin">[ADMIN]</span>':''}<br>
                                  Joined: ${data.joined}<br>
-                                 Status: ${data.online ? 'Online':'Offline'}`;
+                                 Status: ${data.online ? 'Online':'Offline'}<br>
+                                 UserID: ${data.userid}`;
                 setTimeout(()=>{ box.style.display='none'; }, 5000);
             }
         </script>
@@ -220,6 +248,7 @@ def index():
 
 @app.route("/register", methods=["POST"])
 def register():
+    global next_userid
     data = request.get_json()
     u = data.get("username","").strip()
     p = data.get("password","")
@@ -228,12 +257,14 @@ def register():
     if u in users:
         return jsonify(success=False,error="Username already exists")
     users[u] = {
+        "userid": next_userid,
         "password": hashlib.sha256(p.encode()).hexdigest(),
         "is_admin": False,
         "joined": datetime.now().strftime("%Y-%m-%d"),
         "banned": False,
         "online": False
     }
+    next_userid += 1
     return jsonify(success=True)
 
 @app.route("/login", methods=["POST"])
@@ -244,7 +275,7 @@ def login_route():
     user = users.get(u)
     if user and not user["banned"] and hashlib.sha256(p.encode()).hexdigest() == user["password"]:
         user["online"] = True
-        return jsonify(success=True, username=u, is_admin=user["is_admin"])
+        return jsonify(success=True, username=u, is_admin=user["is_admin"], userid=user["userid"])
     return jsonify(success=False, error="Invalid credentials or banned user")
 
 @app.route("/messages", methods=["GET","POST"])
@@ -256,6 +287,7 @@ def msgs():
         new_msg = {
             "id": len(messages)+1,
             "username": data.get("username"),
+            "userid": data.get("userid"),
             "title": data.get("title") or "No Subject",
             "message": data.get("message"),
             "replyTo": data.get("replyTo"),
@@ -281,7 +313,7 @@ def profile(username):
     user = users.get(username)
     if not user:
         return jsonify(success=False,error="User not found")
-    return jsonify(username=username, is_admin=user["is_admin"], joined=user["joined"], online=user["online"])
+    return jsonify(username=username, is_admin=user["is_admin"], joined=user["joined"], online=user["online"], userid=user["userid"])
 
 if __name__=="__main__":
     app.run(debug=True)
