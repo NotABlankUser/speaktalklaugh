@@ -12,7 +12,7 @@ messages_table = db.table('messages')
 if not users_table.contains(Query().username == 'admin'):
     users_table.insert({
         'username':'admin',
-        'password':'Administrator555',  # plain text for simplicity; hash in real app
+        'password':'Administrator555',
         'is_admin': True,
         'is_moderator': False,
         'joined': datetime.now().strftime('%Y-%m-%d'),
@@ -465,21 +465,39 @@ def index():
 
 @app.route("/home")
 def home():
-    return render_template_string("<h2>Welcome to Admin's Forum Home!</h2><p>Enjoy your stay.</p><a href='/'>Back</a>")
+    return render_template_string("<h2>Home</h2><p>Welcome to Admin's Forum home page!</p><a href='/'>Back to Forum</a>")
 
 @app.route("/forums")
 def forums():
-    return render_template_string("<h2>Forums</h2><p>All discussion boards go here.</p><a href='/'>Back</a>")
+    messages = messages_table.all()
+    msg_list = "<ul>" + "".join([f"<li>{m['title']} by {m['username']}</li>" for m in messages]) + "</ul>"
+    return render_template_string(f"<h2>Forums</h2>{msg_list}<a href='/'>Back to Forum</a>")
 
 @app.route("/members")
 def members():
     users = users_table.all()
     user_list = "<ul>" + "".join([f"<li>{u['username']}</li>" for u in users]) + "</ul>"
-    return render_template_string(f"<h2>Members</h2>{user_list}<a href='/'>Back</a>")
+    return render_template_string(f"<h2>Members</h2>{user_list}<a href='/'>Back to Forum</a>")
+
+@app.route("/search", methods=["GET","POST"])
+def search():
+    if request.method=="POST":
+        query = request.form.get("query","").lower()
+        results = [m for m in messages_table.all() if query in m['title'].lower() or query in m['message'].lower()]
+        results_html = "<ul>" + "".join([f"<li>{r['title']} by {r['username']}</li>" for r in results]) + "</ul>"
+        return render_template_string(f"<h2>Search Results</h2>{results_html}<a href='/'>Back to Forum</a>")
+    return render_template_string("""
+        <h2>Search Forum</h2>
+        <form method="post">
+            <input name="query" placeholder="Search messages..." required>
+            <button type="submit">Search</button>
+        </form>
+        <a href='/'>Back to Forum</a>
+    """)
 
 @app.route("/help")
 def help_page():
-    return render_template_string("<h2>Help</h2><p>Forum rules and FAQ go here.</p><a href='/'>Back</a>")
+    return render_template_string("<h2>Help</h2><p>Forum rules and FAQ go here.</p><a href='/'>Back to Forum</a>")
 
 # ----------------- Auth -----------------
 @app.route("/login", methods=["POST"])
