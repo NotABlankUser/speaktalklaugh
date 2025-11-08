@@ -962,6 +962,10 @@ def messages():
             'badges': user.get('badges', [])
         })
         return jsonify(success=True)
+          except Exception as e:
+            print(f"Error in /messages: {e}")
+            return jsonify(success=False, error="Internal server error"), 500
+        
     return jsonify(messages=messages_table.all())
 
 @app.route("/delete_message/<int:id>", methods=["POST"])
