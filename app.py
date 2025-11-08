@@ -11,8 +11,8 @@ messages_table = db.table('messages')
 # Initialize admin if not exists
 if not users_table.contains(Query().username == 'admin'):
     users_table.insert({
-        'username':'Administrator',
-        'password':'Administrator555',
+        'username':'admin',
+        'password':'cooladmin',
         'is_admin': True,
         'is_moderator': False,
         'joined': datetime.now().strftime('%Y-%m-%d'),
