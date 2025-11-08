@@ -3,6 +3,7 @@ from tinydb import TinyDB, Query
 from datetime import datetime
 import html
 import re
+from markupsafe import escape
 
 app = Flask(__name__)
 db = TinyDB('db.json')
@@ -887,86 +888,99 @@ def login():
         return jsonify(success=True, username=user['username'], is_admin=user['is_admin'], is_moderator=user['is_moderator'])
     return jsonify(success=False, error="Invalid credentials or terminated/banned account")
 
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.get_json()
-    
-    # XSS Protection for register
-    username = data.get('username', '')
-    password = data.get('password', '')
-    
-    # Sanitize username and password
-    if username:
-        username = html.escape(username.strip())
-        # Remove dangerous patterns
-        username = re.sub(r'javascript:', '', username, flags=re.IGNORECASE)
-        username = re.sub(r'vbscript:', '', username, flags=re.IGNORECASE)
-        username = re.sub(r'on\w+\s*=', '', username, flags=re.IGNORECASE)
-    
-    if password:
-        password = html.escape(password)
-        password = re.sub(r'javascript:', '', password, flags=re.IGNORECASE)
-        password = re.sub(r'vbscript:', '', password, flags=re.IGNORECASE)
-        password = re.sub(r'on\w+\s*=', '', password, flags=re.IGNORECASE)
-    
-    if users_table.contains(Query().username == username):
-        return jsonify(success=False, error="Username already exists")
-    
-    users_table.insert({
-        'username': username,
-        'password': password,
-        'is_admin': False,
-        'is_moderator': False,
-        'joined': datetime.now().strftime('%Y-%m-%d'),
-        'banned_until': None,
-        'terminated': False,
-        'online': False,
-        'badges': []
-    })
-    return jsonify(success=True)
-
 @app.route("/messages", methods=["GET","POST"])
 def messages():
     if request.method=="POST":
+        try:
+            data = request.get_json()
+            if not data or 'username' not in data:
+                return jsonify(success=False, error="Missing username"), 400
+                
+            user = users_table.get(Query().username == data['username'])
+            if not user:
+                return jsonify(success=False, error="User not found"), 404
+                
+            msg_id = len(messages_table) + 1
+            
+             #now uses markupsafe
+            title = data.get('title', '(No Subject)')
+            message = data.get('message', '')
+            
+            # Sanitize title and message
+            if title and isinstance(title, str):
+                title = escape(title)
+                title = re.sub(r'javascript:', '', title, flags=re.IGNORECASE)
+                title = re.sub(r'vbscript:', '', title, flags=re.IGNORECASE)
+                title = re.sub(r'on\w+\s*=', '', title, flags=re.IGNORECASE)
+            else:
+                title = '(No Subject)'
+            
+            if message and isinstance(message, str):
+                message = escape(message)
+                message = re.sub(r'javascript:', '', message, flags=re.IGNORECASE)
+                message = re.sub(r'vbscript:', '', message, flags=re.IGNORECASE)
+                message = re.sub(r'on\w+\s*=', '', message, flags=re.IGNORECASE)
+            else:
+                message = ''
+            
+            messages_table.insert({
+                'id': msg_id,
+                'username': data['username'],
+                'user_id': user.doc_id,
+                'title': title,
+                'message': message,
+                'replyTo': data.get('replyTo'),
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                'is_admin': user['is_admin'],
+                'is_moderator': user['is_moderator'],
+                'badges': user.get('badges', [])
+            })
+            return jsonify(success=True)
+        except Exception as e:
+            print(f"Error in messages: {e}")
+            return jsonify(success=False, error="Internal server error"), 500
+    return jsonify(messages=messages_table.all())
+@app.route("/register", methods=["POST"])
+def register():
+    try:
         data = request.get_json()
-        user = users_table.get(Query().username == data['username'])
-        msg_id = len(messages_table) + 1
+        if not data:
+            return jsonify(success=False, error="No data provided"), 400
+            
+        # XSS Protection for register
+        username = data.get('username', '')
+        password = data.get('password', '')
         
-        # XSS Protection for messages. Previous version was broken.
-        title = data.get('title', '(No Subject)')
-        message = data.get('message', '')
+        if not username or not password:
+            return jsonify(success=False, error="Username and password required"), 400
         
-        # Sanitize title and message - but keep them as strings
-        if title and isinstance(title, str):
-            title = html.escape(title)
-            title = re.sub(r'javascript:', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'vbscript:', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'on\w+\s*=', '', title, flags=re.IGNORECASE)
-        else:
-            title = '(No Subject)'
+        # Sanitize username and password using markupsafe.escape()
+        username = username.strip()
+        if username:
+            username = escape(username)
+            username = re.sub(r'javascript:', '', username, flags=re.IGNORECASE)
+            username = re.sub(r'vbscript:', '', username, flags=re.IGNORECASE)
+            username = re.sub(r'on\w+\s*=', '', username, flags=re.IGNORECASE)
         
-        if message and isinstance(message, str):
-            message = html.escape(message)
-            message = re.sub(r'javascript:', '', message, flags=re.IGNORECASE)
-            message = re.sub(r'vbscript:', '', message, flags=re.IGNORECASE)
-            message = re.sub(r'on\w+\s*=', '', message, flags=re.IGNORECASE)
-        else:
-            message = ''
+        if users_table.contains(Query().username == username):
+            return jsonify(success=False, error="Username already exists"), 400
         
-        messages_table.insert({
-            'id': msg_id,
-            'username': data['username'],
-            'user_id': user.doc_id,
-            'title': title,
-            'message': message,
-            'replyTo': data.get('replyTo'),
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
-            'is_admin': user['is_admin'],
-            'is_moderator': user['is_moderator'],
-            'badges': user.get('badges', [])
+        users_table.insert({
+            'username': username,
+            'password': password,
+            'is_admin': False,
+            'is_moderator': False,
+            'joined': datetime.now().strftime('%Y-%m-%d'),
+            'banned_until': None,
+            'terminated': False,
+            'online': False,
+            'badges': []
         })
         return jsonify(success=True)
-    return jsonify(messages=messages_table.all())
+    except Exception as e:
+        print(f"Error in register: {e}")
+        return jsonify(success=False, error="Internal server error"), 500
+
     
 @app.route("/delete_message/<int:id>", methods=["POST"])
 def delete_message(id):
