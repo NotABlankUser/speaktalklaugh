@@ -22,6 +22,19 @@ if not users_table.contains(Query().username == 'admin'):
         'online': False,
         'badges': ['Administrator']
     })
+    
+if not users_table.contains(Query().username == 'Administrator User'):
+    users_table.insert({
+        'username': 'Administrator User',
+        'password': 'funny123',
+        'is_admin': True,
+        'is_moderator': True,
+        'joined': datetime.now().strftime('%Y-%m-%d'),
+        'banned_until': None,
+        'terminated': False,
+        'online': False,
+        'badges': ['Administrator', 'Moderator]
+    })
 
 html = """<!DOCTYPE html>
 <html>
