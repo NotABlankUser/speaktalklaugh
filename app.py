@@ -11,7 +11,7 @@ messages_table = db.table('messages')
 # Initialize admin if not exists
 if not users_table.contains(Query().username == 'admin'):
     users_table.insert({
-        'username':'admin',
+        'username':'Administrator',
         'password':'Administrator555',
         'is_admin': True,
         'is_moderator': False,
@@ -19,7 +19,7 @@ if not users_table.contains(Query().username == 'admin'):
         'banned_until': None,
         'terminated': False,
         'online': False,
-        'badges': ['Administrator']
+        'badges': ['Administrator', 'Moderator']
     })
 
 html = """<!DOCTYPE html>
