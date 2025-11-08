@@ -339,6 +339,23 @@ def login_route():
         return jsonify(success=True, username=u, is_admin=user["is_admin"], is_moderator=user.get("is_moderator", False))
     return jsonify(success=False, error="Invalid credentials")
 
+# --- Users ---
+# Example: add a numeric ID to each user
+users = {
+    "admin": {
+        "user_id": 1,
+        "password": hashlib.sha256("Administrator555".encode()).hexdigest(),
+        "is_admin": True,
+        "is_moderator": False,
+        "joined": datetime.now().strftime("%Y-%m-%d"),
+        "banned_until": None,
+        "terminated": False,
+        "online": False,
+        "badges": ["Administrator"]
+    }
+}
+
+# --- Message POST ---
 @app.route("/messages", methods=["GET","POST"])
 def msgs():
     if request.method=="POST":
@@ -349,8 +366,10 @@ def msgs():
             return jsonify(success=False,error="You are banned")
         if user.get("terminated"):
             return jsonify(success=False,error="Account terminated")
+        
         new_msg = {
             "id": len(messages)+1,
+            "user_id": user.get("user_id"),  # <--- include user_id
             "username": username,
             "title": data.get("title") or "No Subject",
             "message": data.get("message"),
@@ -362,6 +381,7 @@ def msgs():
         messages.append(new_msg)
         return jsonify(success=True)
     return jsonify(messages=messages)
+
 
 @app.route("/delete_message/<int:id>", methods=["POST"])
 def delete_message(id):
