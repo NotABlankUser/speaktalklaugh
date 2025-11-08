@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template_string
 from tinydb import TinyDB, Query
 from datetime import datetime
 import re
+import time, html
 
 # Matches <script>, <img>, <iframe>, <svg>, and any "on*" attributes like onclick
 FORBIDDEN_TAGS = re.compile(r"<\s*(script|img|iframe|svg|on\w+)[^>]*>", re.IGNORECASE)
@@ -925,39 +926,55 @@ def register():
     return jsonify({"success": True})
 
 
-@app.route("/messages", methods=["POST"])
-def post_message():
-    data = request.get_json() or {}
-    username = data.get("username", "")
-    title = data.get("title", "")
-    message = data.get("message", "")
-    reply_to = data.get("replyTo")
+@app.route("/messages", methods=["GET", "POST"])
+def messages():
+    try:
+        # --- GET: return all posts ---
+        if request.method == "GET":
+            all_posts = [escape_post(p) for p in posts_table.all()]
+            return jsonify({"success": True, "posts": all_posts}), 200
 
-    if not username.strip() or not message.strip():
-        return jsonify({"success": False, "error": "Username and message required"}), 400
+        # --- POST: add new post ---
+        data = request.get_json(force=True) or {}
 
-    # Block dangerous HTML tags in title or message
-    if contains_forbidden_tags(title) or contains_forbidden_tags(message):
-        return jsonify({"success": False, "error": "Title or message contains forbidden HTML tags"}), 400
+        username = data.get("username", "").strip()
+        title = data.get("title", "").strip()
+        message = data.get("message", "").strip()
+        reply_to = data.get("replyTo")
 
-    user = find_user(username)
-    user_id = user["user_id"] if user else "unknown-" + username
+        # Basic validation
+        if not username or not message:
+            return jsonify({"success": False, "error": "Username and message required"}), 400
 
-    new_post = {
-        "id": int(time.time() * 1000),
-        "user_id": user_id,
-        "username": username,
-        "title": title,
-        "message": message,
-        "replyTo": reply_to,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-        "badges": user.get("badges", []) if user else [],
-        "is_admin": bool(user.get("is_admin", False)) if user else False,
-        "is_moderator": bool(user.get("is_moderator", False)) if user else False
-    }
-    posts_table.insert(new_post)
-    return jsonify({"success": True, "post": escape_post(new_post)}), 201
+        # Block dangerous HTML tags in title/message
+        if contains_forbidden_tags(title) or contains_forbidden_tags(message):
+            return jsonify({"success": False, "error": "Title or message contains forbidden HTML tags"}), 400
 
+        user = find_user(username)
+        user_id = user["user_id"] if user else f"unknown-{username}"
+        badges = user.get("badges", []) if user else []
+        is_admin = bool(user.get("is_admin", False)) if user else False
+        is_moderator = bool(user.get("is_moderator", False)) if user else False
+
+        new_post = {
+            "id": int(time.time() * 1000),
+            "user_id": user_id,
+            "username": username,
+            "title": title,
+            "message": message,
+            "replyTo": reply_to,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
+            "badges": badges,
+            "is_admin": is_admin,
+            "is_moderator": is_moderator
+        }
+
+        posts_table.insert(new_post)
+        return jsonify({"success": True, "post": escape_post(new_post)}), 201
+
+    except Exception as e:
+        print(f"[ERROR /messages] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/delete_message/<int:id>", methods=["POST"])
 def delete_message(id):
