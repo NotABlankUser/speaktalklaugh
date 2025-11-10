@@ -33,7 +33,7 @@ if not users_table.contains(Query().username == 'Administrator User'):
         'banned_until': None,
         'terminated': False,
         'online': False,
-        'badges': ['Administrator', 'Moderator]
+        'badges': ['Administrator', 'Moderator']
     })
 
 html = """<!DOCTYPE html>
